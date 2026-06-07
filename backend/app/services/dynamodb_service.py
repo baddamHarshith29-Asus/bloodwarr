@@ -176,6 +176,7 @@ def get_pipeline_run_history(limit: int = 20) -> list[dict]:
 
 
 def get_dynamodb_status() -> dict:
+    _get_dynamodb()
     return {
         "available": DYNAMODB_AVAILABLE,
         "cached_donors": len(_availability_cache),

@@ -181,6 +181,7 @@ def get_recent_events(limit: int = 50, event_type: str | None = None) -> list[di
 
 
 def get_kinesis_status() -> dict:
+    _get_kinesis_client()
     return {
         "available": KINESIS_AVAILABLE,
         "stream_name": STREAM_NAME,
