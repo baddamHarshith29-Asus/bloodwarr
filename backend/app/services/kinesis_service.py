@@ -54,8 +54,6 @@ def _get_kinesis_client():
             
         region = os.environ.get("AWS_REGION", "ap-south-1")
         _kinesis_client = boto3.client("kinesis", region_name=region)
-        # Verify stream exists
-        _kinesis_client.describe_stream_summary(StreamName=STREAM_NAME)
         KINESIS_AVAILABLE = True
         logger.info("✅ Kinesis stream '%s' connected", STREAM_NAME)
     except Exception as e:

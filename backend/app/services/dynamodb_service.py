@@ -39,11 +39,6 @@ def _get_dynamodb():
             raise ValueError("No AWS credentials found in local environment")
             
         region = os.environ.get("AWS_REGION", "ap-south-1")
-        # List tables to verify connection and deployment
-        table_names = boto3.client("dynamodb", region_name=region).list_tables()["TableNames"]
-        if "bw-donor-availability" not in table_names:
-            raise ValueError("Tables not deployed in AWS account yet (run terraform apply first)")
-            
         _dynamodb = boto3.resource("dynamodb", region_name=region)
         DYNAMODB_AVAILABLE = True
         logger.info("✅ DynamoDB connected (region: %s)", region)

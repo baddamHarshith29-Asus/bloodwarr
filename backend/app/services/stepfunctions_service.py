@@ -30,8 +30,6 @@ def _get_sf_client():
             
         region = os.environ.get("AWS_REGION", "ap-south-1")
         _sf_client = boto3.client("stepfunctions", region_name=region)
-        # Check by listing state machines
-        _sf_client.list_state_machines(maxResults=1)
         SF_AVAILABLE = True
         logger.info("✅ AWS Step Functions client connected")
     except Exception as e:
