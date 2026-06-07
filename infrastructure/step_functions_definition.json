@@ -1,0 +1,226 @@
+{
+  "Comment": "Blood Warriors — Full Autonomous Blood Coordination State Machine",
+  "StartAt": "ValidateRequest",
+  "States": {
+    "ValidateRequest": {
+      "Type": "Task",
+      "Resource": "${ValidateRequestLambdaArn}",
+      "Parameters": {
+        "request_id.$": "$.request_id",
+        "patient_id.$": "$.patient_id"
+      },
+      "ResultPath": "$.validation",
+      "Next": "CheckRequestValid",
+      "Retry": [{"ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 5, "MaxAttempts": 2}],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "PipelineFailed"}]
+    },
+
+    "CheckRequestValid": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.validation.valid",
+          "BooleanEquals": true,
+          "Next": "MatchDonors"
+        }
+      ],
+      "Default": "PipelineFailed"
+    },
+
+    "MatchDonors": {
+      "Type": "Task",
+      "Resource": "${MatchDonorsLambdaArn}",
+      "Parameters": {
+        "request_id.$": "$.request_id",
+        "blood_group.$": "$.blood_group",
+        "city.$": "$.city",
+        "top_n": 5
+      },
+      "ResultPath": "$.matching",
+      "Next": "CheckMatchFound",
+      "Retry": [{"ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 10, "MaxAttempts": 3}],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "EscalateRequest"}]
+    },
+
+    "CheckMatchFound": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.matching.match_count",
+          "NumericGreaterThan": 0,
+          "Next": "GenerateOutreachMessages"
+        }
+      ],
+      "Default": "EscalateRequest"
+    },
+
+    "GenerateOutreachMessages": {
+      "Type": "Task",
+      "Resource": "${GenerateOutreachLambdaArn}",
+      "Comment": "Uses Amazon Bedrock (Claude claude-3-haiku) for multilingual message generation",
+      "Parameters": {
+        "request_id.$": "$.request_id",
+        "matches.$": "$.matching.matches",
+        "use_bedrock": true
+      },
+      "ResultPath": "$.outreach",
+      "Next": "SendNotifications",
+      "Retry": [{"ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 5, "MaxAttempts": 2}]
+    },
+
+    "SendNotifications": {
+      "Type": "Task",
+      "Resource": "${SendNotificationsLambdaArn}",
+      "Comment": "Sends via SNS → SMS/Email/WhatsApp based on donor preference",
+      "Parameters": {
+        "request_id.$": "$.request_id",
+        "messages.$": "$.outreach.messages"
+      },
+      "ResultPath": "$.notifications",
+      "Next": "PublishToKinesis",
+      "Retry": [{"ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 10, "MaxAttempts": 3}]
+    },
+
+    "PublishToKinesis": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::kinesis:putRecord",
+      "Parameters": {
+        "StreamName": "${KinesisStreamName}",
+        "Data.$": "States.JsonToString($.notifications)",
+        "PartitionKey.$": "States.Format('request-{}', $.request_id)"
+      },
+      "ResultPath": "$.kinesis",
+      "Next": "WaitForDonorResponse"
+    },
+
+    "WaitForDonorResponse": {
+      "Type": "Wait",
+      "Comment": "Wait up to 4 hours for donor to respond via webhook",
+      "Seconds": 14400,
+      "Next": "CheckDonorResponse"
+    },
+
+    "CheckDonorResponse": {
+      "Type": "Task",
+      "Resource": "${CheckResponseLambdaArn}",
+      "Parameters": {
+        "request_id.$": "$.request_id"
+      },
+      "ResultPath": "$.response_check",
+      "Next": "RouteDonorResponse"
+    },
+
+    "RouteDonorResponse": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.response_check.status",
+          "StringEquals": "confirmed",
+          "Next": "ScheduleAppointment"
+        },
+        {
+          "Variable": "$.response_check.status",
+          "StringEquals": "declined",
+          "Next": "EscalateRequest"
+        }
+      ],
+      "Default": "EscalateRequest"
+    },
+
+    "ScheduleAppointment": {
+      "Type": "Task",
+      "Resource": "${ScheduleAppointmentLambdaArn}",
+      "Parameters": {
+        "request_id.$": "$.request_id",
+        "donor_id.$": "$.response_check.confirmed_donor_id"
+      },
+      "ResultPath": "$.appointment",
+      "Next": "UpdateDynamoDB"
+    },
+
+    "UpdateDynamoDB": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "bw-donor-availability",
+        "Item": {
+          "donor_id": {"S.$": "States.Format('{}', $.response_check.confirmed_donor_id)"},
+          "status": {"S": "unavailable"},
+          "updated_at": {"S.$": "$$.Execution.StartTime"}
+        }
+      },
+      "ResultPath": "$.dynamodb_update",
+      "Next": "WaitForDonationDay"
+    },
+
+    "WaitForDonationDay": {
+      "Type": "Wait",
+      "Comment": "Wait until 24 hours before donation date to send reminder",
+      "Seconds": 172800,
+      "Next": "SendPreDonationReminder"
+    },
+
+    "SendPreDonationReminder": {
+      "Type": "Task",
+      "Resource": "${SendReminderLambdaArn}",
+      "Comment": "Bedrock generates personalized reminder in donor's language",
+      "Parameters": {
+        "request_id.$": "$.request_id",
+        "appointment.$": "$.appointment"
+      },
+      "ResultPath": "$.reminder",
+      "Next": "MarkDonationComplete"
+    },
+
+    "MarkDonationComplete": {
+      "Type": "Task",
+      "Resource": "${CompleteDonationLambdaArn}",
+      "Parameters": {
+        "request_id.$": "$.request_id"
+      },
+      "ResultPath": "$.completion",
+      "Next": "PipelineSuccess"
+    },
+
+    "EscalateRequest": {
+      "Type": "Task",
+      "Resource": "${EscalateRequestLambdaArn}",
+      "Parameters": {
+        "request_id.$": "$.request_id"
+      },
+      "ResultPath": "$.escalation",
+      "Next": "CheckEscalationLimit"
+    },
+
+    "CheckEscalationLimit": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.escalation.round",
+          "NumericLessThan": 4,
+          "Next": "MatchDonors"
+        }
+      ],
+      "Default": "MarkCritical"
+    },
+
+    "MarkCritical": {
+      "Type": "Task",
+      "Resource": "${MarkCriticalLambdaArn}",
+      "Parameters": {
+        "request_id.$": "$.request_id"
+      },
+      "Next": "PipelineFailed"
+    },
+
+    "PipelineSuccess": {
+      "Type": "Succeed"
+    },
+
+    "PipelineFailed": {
+      "Type": "Fail",
+      "Error": "PipelineError",
+      "Cause": "Blood coordination pipeline failed or exceeded escalation limit"
+    }
+  }
+}

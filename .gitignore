@@ -1,0 +1,28 @@
+bloodmind.db
+node_modules/
+frontend/dist/
+backend/__pycache__/
+backend/app/**/__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+__pycache__/
+.DS_Store
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Secrets and Keys
+*.pem
+*.key
+*.pub
+*creds*
+*credentials*
+passwd
+password
+aws_access_key_id
+aws_secret_access_key
