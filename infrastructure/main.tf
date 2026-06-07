@@ -557,7 +557,7 @@ resource "aws_ecs_service" "backend" {
   name            = "bloodwarriors-backend"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.backend.arn
-  desired_count   = 0
+  desired_count   = 1
   launch_type     = "FARGATE"
   network_configuration {
     subnets          = module.vpc.private_subnets
@@ -674,7 +674,10 @@ resource "aws_codebuild_project" "backend" {
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = "15"
 
-  artifacts { type = "CODEPIPELINE" }
+  artifacts {
+    type = "NO_ARTIFACTS"
+    name = null
+  }
   environment {
     compute_type    = "BUILD_GENERAL1_SMALL"
     image           = "aws/codebuild/standard:7.0"
@@ -690,8 +693,10 @@ resource "aws_codebuild_project" "backend" {
     }
   }
   source {
-    type      = "CODEPIPELINE"
-    buildspec = <<-EOT
+    type            = "GITHUB"
+    location        = "https://github.com/baddamHarshith29-Asus/bloodwarr.git"
+    git_clone_depth = 1
+    buildspec       = <<-EOT
       version: 0.2
       phases:
         pre_build:
@@ -699,17 +704,13 @@ resource "aws_codebuild_project" "backend" {
             - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
         build:
           commands:
+            - cp Dataset.csv backend/
             - cd backend
             - docker build -t bloodwarriors-backend .
             - docker tag bloodwarriors-backend:latest $ECR_REPO:latest
-            - docker tag bloodwarriors-backend:latest $ECR_REPO:$CODEBUILD_RESOLVED_SOURCE_VERSION
         post_build:
           commands:
             - docker push $ECR_REPO:latest
-            - docker push $ECR_REPO:$CODEBUILD_RESOLVED_SOURCE_VERSION
-            - printf '[{"name":"backend","imageUri":"%s"}]' $ECR_REPO:latest > imagedefinitions.json
-      artifacts:
-        files: imagedefinitions.json
     EOT
   }
 }
