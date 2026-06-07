@@ -283,7 +283,6 @@ locals {
     SNS_ALERTS_ARN           = aws_sns_topic.blood_alerts.arn
     SES_FROM_EMAIL           = "noreply@${var.email_domain}"
     API_BASE_URL             = "http://${aws_lb.main.dns_name}/api/v1"
-    AWS_REGION               = var.aws_region
   }
 }
 
@@ -812,3 +811,9 @@ import {
   to = aws_kinesis_stream.events
   id = "blood-warriors-events"
 }
+
+import {
+  to = aws_sagemaker_endpoint.matching
+  id = "bw-donor-matching-endpoint"
+}
+

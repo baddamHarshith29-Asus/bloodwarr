@@ -83,7 +83,7 @@
 
     "PublishToKinesis": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::kinesis:putRecord",
+      "Resource": "arn:aws:states:::aws-sdk:kinesis:putRecord",
       "Parameters": {
         "StreamName": "${KinesisStreamName}",
         "Data.$": "States.JsonToString($.notifications)",

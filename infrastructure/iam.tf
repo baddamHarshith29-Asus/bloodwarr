@@ -104,7 +104,19 @@ resource "aws_iam_role_policy" "step_functions_policy" {
       { Effect = "Allow", Action = ["lambda:InvokeFunction"], Resource = "*" },
       { Effect = "Allow", Action = ["kinesis:PutRecord"], Resource = aws_kinesis_stream.events.arn },
       { Effect = "Allow", Action = ["dynamodb:PutItem", "dynamodb:UpdateItem"], Resource = "*" },
-      { Effect = "Allow", Action = ["logs:CreateLogDelivery", "logs:PutLogEvents", "logs:DescribeLogGroups"], Resource = "*" },
+      { Effect = "Allow", Action = [
+        "logs:CreateLogDelivery",
+        "logs:GetLogDelivery",
+        "logs:UpdateLogDelivery",
+        "logs:DeleteLogDelivery",
+        "logs:ListLogDeliveries",
+        "logs:PutLogEvents",
+        "logs:GetLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:DescribeResourcePolicies",
+        "logs:PutResourcePolicy"
+      ], Resource = "*" },
       { Effect = "Allow", Action = ["xray:PutTraceSegments", "xray:GetSamplingRules"], Resource = "*" },
     ]
   })
